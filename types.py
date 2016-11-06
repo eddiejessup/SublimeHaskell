@@ -197,7 +197,7 @@ def get_type_view(view, selection = None):
     column = c
 
     module_name = None
-    m = head_of(hsdev.client.module(file = filename))
+    m = head_of(hsdev.client.module(file = filename, header = True))
     if m:
         module_name = m.name
 
@@ -246,7 +246,7 @@ class SublimeHaskellShowType(SublimeHaskellTextCommand):
             column = c
 
         module_name = None
-        m = head_of(hsdev.client.module(file = filename))
+        m = head_of(hsdev.client.module(file = filename, header = True))
         if m:
             module_name = m.name
 

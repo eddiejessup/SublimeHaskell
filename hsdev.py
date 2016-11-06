@@ -134,12 +134,6 @@ def parse_database(s):
     return None
 
 
-def parse_decls(s):
-    if s is None:
-        return None
-    return [parse_module_declaration(decl) for decl in s]
-
-
 def parse_modules_brief(s):
     if s is None:
         return None
@@ -210,85 +204,82 @@ def parse_location(d):
     return None
 
 
-def parse_import(d):
-    if not d:
-        return None
-    return symbols.Import(d['name'], d['qualified'], d.get('as'), parse_position(d.get('pos')))
-
-
 def parse_module_id(d):
     if d is None:
         return None
-    return symbols.Module(
+    return symbols.ModuleId(
         d['name'],
-        [], [], {},
         parse_location(d.get('location')))
 
 
-def parse_declaration(decl):
+def parse_symbol_id(d):
+    if d is None:
+        return None
+    return symbols.SymbolId(
+        d['name'],
+        moduleId = parse_module_id(d['module']))
+
+
+def parse_symbol(sym):
     try:
-        what = decl['decl']['what']
-        docs = crlf2lf(decl.get('docs'))
-        name = decl['name']
-        pos = parse_position(decl.get('pos'))
-        imported = []
-        if 'imported' in decl and decl['imported']:
-            imported = [parse_import(d) for d in decl['imported']]
-        defined = None
-        if 'defined' in decl and decl['defined']:
-            defined = parse_module_id(decl['defined'])
+        sym_id = parse_symbol_id(sym['id'])
+        what = sym['info']['what']
+        docs = crlf2lf(sym.get('docs'))
+        pos = parse_position(sym.get('pos'))
+        qnames = sym.get('qnames')
+
+        ftype = sym['info'].get('type')
+        fparent = sym['info'].get('parent')
+        ctors = sym['info'].get('constructors')
+        args = sym['info'].get('args', [])
+        ctx = sym['info'].get('ctx', [])
+        assoc = sym['info'].get('associate')
 
         if what == 'function':
-            return symbols.Function(name, decl['decl'].get('type'), docs, imported, defined, pos)
+            return symbols.Function(sym_id.name, sym_id.module, ftype, qnames = qnames)
+        elif what == 'method':
+            return symbols.Method(sym_id.name, sym_id.module, ftype, fparent, qnames = qnames)
+        elif what == 'selector':
+            return symbols.Selector(sym_id.name, sym_id.module, ftype, fparent, qnames = qnames)
+        elif what == 'ctor':
+            return symbols.Constructor(sym_id.name, sym_id.module, args, fparent, qnames = qnames)
         elif what == 'type':
-            return symbols.Type(name, decl['decl']['info'].get('ctx'), decl['decl']['info'].get('args', []), decl['decl']['info'].get('def'), docs, imported, defined, pos)
+            return symbols.Type(sym_id.name, sym_id.module, ctx, args, qnames = qnames)
         elif what == 'newtype':
-            return symbols.Newtype(name, decl['decl']['info'].get('ctx'), decl['decl']['info'].get('args', []), decl['decl']['info'].get('def'), docs, imported, defined, pos)
+            return symbols.Newtype(sym_id.name, sym_id.module, ctx, args, qnames = qnames)
         elif what == 'data':
-            return symbols.Data(name, decl['decl']['info'].get('ctx'), decl['decl']['info'].get('args', []), decl['decl']['info'].get('def'), docs, imported, defined, pos)
+            return symbols.Data(sym_id.name, sym_id.module, ctx, args, qnames = qnames)
         elif what == 'class':
-            return symbols.Class(name, decl['decl']['info'].get('ctx'), decl['decl']['info'].get('args', []), decl['decl']['info'].get('def'), docs, imported, defined, pos)
+            return symbols.Class(sym_id.name, sym_id.module, ctx, args, qnames = qnames)
+        elif what == 'patsyn':
+            return symbols.PatternSynonym(sym_id.name, sym_id.module, ctx, args, qnames = qnames)
+        elif what == 'type-family':
+            return symbols.TypeFamily(sym_id.name, sym_id.module, ctx, args, assoc, qnames = qnames)
+        elif what == 'data-family':
+            return symbols.DataFamily(sym_id.name, sym_id.module, ctx, args, assoc, qnames = qnames)
         else:
             return None
+
     except Exception as e:
-        log('Error pasring declaration: {0}'.format(e), log_error)
+        log('Error pasring symbol: {0}'.format(e), log_error)
         return None
 
 
-def parse_declarations(decls):
-    if decls is None:
+def parse_symbols(syms):
+    if syms is None:
         return None
-    return [parse_declaration(d) for d in decls]
-
-
-def parse_module_declaration(d, parse_module_info = True):
-    try:
-        m = None
-        if 'module-id' in d and parse_module_info:
-            m = parse_module_id(d['module-id'])
-
-        # loc = parse_location(d['module-id'].get('location'))
-        decl = parse_declaration(d['declaration'])
-
-        if not decl:
-            return None
-
-        decl.module = m
-
-        return decl
-    except:
-        return None
+    return [parse_symbol(d) for d in syms]
 
 
 def parse_module(d):
     if d is None:
         return None
+    mid = parse_module_id(d['id'])
     return symbols.Module(
-        d['name'],
-        d.get('exports'),
-        [parse_import(i) for i in d['imports']] if 'imports' in d else [],
-        dict((decl['name'], parse_declaration(decl)) for decl in d['declarations']) if 'declarations' in d else {},
-        parse_location(d.get('location')))
+        mid.name,
+        mid.location,
+        parse_symbols(d.get('exports', [])),
+        parse_symbols(d.get('scope', [])))
 
 
 def parse_modules(ds):
@@ -833,32 +824,6 @@ class HsDev(object):
         return cmd('remove-all', {})
 
     @list_command
-    def list_modules(self, project = None, file = None, module = None, deps = None, sandbox = None, cabal = False, db = None, package = None, source = False, standalone = False):
-        fs = []
-        if project:
-            fs.append({'project': project})
-        if file:
-            fs.append({'file': file})
-        if module:
-            fs.append({'module': module})
-        if deps:
-            fs.append({'deps': deps})
-        if sandbox:
-            fs.append({'cabal': {'sandbox': sandbox}})
-        if cabal:
-            fs.append({'cabal': 'cabal'})
-        if db:
-            fs.append({'db': encode_package_db(db)})
-        if package:
-            fs.append({'package': package})
-        if source:
-            fs.append('sourced')
-        if standalone:
-            fs.append('standalone')
-
-        return cmd('modules', {'filters': fs}, parse_modules_brief)
-
-    @list_command
     def list_packages(self):
         return cmd('packages', {})
 
@@ -893,11 +858,11 @@ class HsDev(object):
         if standalone:
             fs.append('standalone')
 
-        return cmd('symbol', {'query': q, 'filters': fs, 'locals': locals}, parse_decls)
+        return cmd('symbol', {'query': q, 'filters': fs, 'locals': locals}, parse_symbols)
 
     @command
-    def module(self, input = "", search_type = 'prefix', project = None, file = None, module = None, deps = None, sandbox = None, cabal = False, db = None, package = None, source = False, standalone = False):
-        q = {'input': input, 'type': search_type}
+    def module(self, input = "", search_type = 'prefix', project = None, file = None, module = None, deps = None, sandbox = None, cabal = False, db = None, package = None, source = False, standalone = False, header = False):
+        q = {'input': input, 'type': search_type, 'header': header}
 
         fs = []
         if project:
@@ -937,11 +902,11 @@ class HsDev(object):
 
     @list_command
     def lookup(self, name, file):
-        return cmd('lookup', {'name': name, 'file': file}, parse_decls)
+        return cmd('lookup', {'name': name, 'file': file}, parse_symbols)
 
     @list_command
     def whois(self, name, file):
-        return cmd('whois', {'name': name, 'file': file}, parse_declarations)
+        return cmd('whois', {'name': name, 'file': file}, parse_symbols)
 
     @list_command
     def scope_modules(self, file, input = '', search_type = 'prefix'):
@@ -949,15 +914,15 @@ class HsDev(object):
 
     @list_command
     def scope(self, file, input = '', search_type = 'prefix', global_scope = False):
-        return cmd('scope', {'query': {'input': input, 'type': search_type}, 'global': global_scope, 'file': file}, parse_declarations)
+        return cmd('scope', {'query': {'input': input, 'type': search_type}, 'global': global_scope, 'file': file}, parse_symbols)
 
     @list_command
     def complete(self, input, file, wide = False):
-        return cmd('complete', {'prefix': input, 'wide': wide, 'file': file}, parse_declarations)
+        return cmd('complete', {'prefix': input, 'wide': wide, 'file': file}, parse_symbols)
 
     @list_command
     def hayoo(self, query, page = None, pages = None):
-        return cmd('hayoo', {'query': query, 'page': page or 0, 'pages': pages or 1}, parse_decls)
+        return cmd('hayoo', {'query': query, 'page': page or 0, 'pages': pages or 1}, parse_symbols)
 
     @list_command
     def cabal_list(self, packages):

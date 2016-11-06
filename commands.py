@@ -23,7 +23,7 @@ def is_scanned_source(view = None):
     window, view, file_shown_in_view = get_haskell_command_window_view_file_project(view)
     if file_shown_in_view is None:
         return False
-    m = head_of(hsdev.client.module(file = file_shown_in_view))
+    m = head_of(hsdev.client.module(file = file_shown_in_view, header = True))
     return m is not None
 
 
@@ -31,7 +31,7 @@ def is_in_project(view = None):
     window, view, file_shown_in_view = get_haskell_command_window_view_file_project(view)
     if file_shown_in_view is None:
         return False
-    m = head_of(hsdev.client.module(file = file_shown_in_view))
+    m = head_of(hsdev.client.module(file = file_shown_in_view, header = True))
     if m is None:
         return False
     return m.location.project is not None
@@ -47,8 +47,8 @@ def show_declaration_info_panel(view, decl):
     if decl.has_source_location():
         v.settings().set('location', decl.get_source_location())
     if decl.by_cabal():
-        v.settings().set('package', decl.defined_module().location.package.package_id())
-        v.settings().set('module', decl.defined_module().name)
+        v.settings().set('package', decl.module.location.package.package_id())
+        v.settings().set('module', decl.module.name)
 
 
 # Show symbol info for declaration via calling command
@@ -62,8 +62,8 @@ def show_declaration_info(view, decl):
     info['qname'] = decl.qualified_name()
     info['module_name'] = decl.module.name
     if decl.by_source():
-        info['filename'] = decl.defined_module().location.filename
-    if decl.by_cabal() and decl.defined_module().location.package.name:
+        info['filename'] = decl.module.location.filename
+    if decl.by_cabal() and decl.module.location.package.name:
         info['package_name'] = decl.module.location.package.name
         info['db'] = decl.module.location.db.to_string()
 
@@ -161,7 +161,7 @@ class SublimeHaskellFindDeclarations(hsdev.HsDevWindowCommand):
             show_status_message("Nothing found for: {0}".format(input))
             return
 
-        self.window.show_quick_panel([[decl.module.name + ': ' + decl.brief(use_unicode = False), str(decl.defined_module().location)] for decl in self.decls], self.on_select)
+        self.window.show_quick_panel([[decl.module.name + ': ' + decl.brief(use_unicode = False), str(decl.module.location)] for decl in self.decls], self.on_select)
 
     def on_change(self, input):
         pass
@@ -207,7 +207,7 @@ class SublimeHaskellHayoo(hsdev.HsDevWindowCommand):
         if not self.decls:
             show_status_message("Hayoo '{0}': not found".format(self.input))
             return
-        self.window.show_quick_panel([[decl.module.name + ': ' + decl.brief(use_unicode = False), str(decl.defined_module().location)] for decl in self.decls], self.on_select)
+        self.window.show_quick_panel([[decl.module.name + ': ' + decl.brief(use_unicode = False), str(decl.module.location)] for decl in self.decls], self.on_select)
 
 
 class SublimeHaskellSearch(hsdev.HsDevWindowCommand):
@@ -247,7 +247,7 @@ class SublimeHaskellSearch(hsdev.HsDevWindowCommand):
         if not self.decls:
             show_status_message("Search '{0}' not found".format(self.input))
             return
-        self.window.show_quick_panel([[decl.module.name + ': ' + decl.brief(use_unicode = False), str(decl.defined_module().location)] for decl in self.decls], self.on_select)
+        self.window.show_quick_panel([[decl.module.name + ': ' + decl.brief(use_unicode = False), str(decl.module.location)] for decl in self.decls], self.on_select)
 
 
 # General goto command
@@ -262,7 +262,7 @@ class SublimeHaskellGoTo(hsdev.HsDevWindowCommand):
         (self.line, self.column) = self.view.rowcol(self.view.sel()[0].a)
 
         if project:
-            current_project = head_of(hsdev.client.module(file = self.current_filename)).location.project
+            current_project = head_of(hsdev.client.module(file = self.current_filename, header = True)).location.project
             if not current_project:
                 show_status_message('File {0} is not in project'.format(self.current_filename), False)
                 return
@@ -279,11 +279,6 @@ class SublimeHaskellGoTo(hsdev.HsDevWindowCommand):
 
         self.window.show_quick_panel(self.declarations, self.on_done, 0, self.closest_idx(decls), self.on_highlighted if not project else None)
 
-    def qualified_decls(self, decls):
-        for decl in decls:
-            decl.make_qualified()
-        return decls
-
     def sorted_decls_name(self, decls):
         return list(sorted(decls, key = lambda d: d.name))
 
@@ -292,7 +287,7 @@ class SublimeHaskellGoTo(hsdev.HsDevWindowCommand):
 
     def closest_idx(self, decls):
         fdecls = list(filter(
-            lambda d: d[1].defined_module().location.filename == self.current_filename,
+            lambda d: d[1].module.location.filename == self.current_filename,
             enumerate(decls)))
         if not fdecls:
             return -1
@@ -314,7 +309,7 @@ class SublimeHaskellGoTo(hsdev.HsDevWindowCommand):
 
 class SublimeHaskellGoToModule(hsdev.HsDevWindowCommand):
     def run(self):
-        self.modules = hsdev.client.list_modules(source = True)
+        self.modules = hsdev.client.module(source = True, header = True)
         self.window.show_quick_panel([[m.name if m.name != 'Main' else 'Main in {0}'.format(m.location.to_string()), m.location.to_string()] for m in self.modules], self.on_done, 0, 0, self.on_highlighted)
 
     def on_done(self, idx):
@@ -359,7 +354,7 @@ class SublimeHaskellGoToHackageModule(hsdev.HsDevTextCommand):
                     ms = [m for m in hsdev.client.scope_modules(
                         scope, input = qsymbol.module, search_type = 'exact') if m.by_cabal()]
                 else:
-                    ms = [m for m in hsdev.client.list_modules(db = m.location.db) if m.name == qsymbol.module and m.by_cabal()]
+                    ms = [m for m in hsdev.client.module(db = m.location.db, header = True) if m.name == qsymbol.module and m.by_cabal()]
             else:  # symbol
                 scope = self.view.file_name()
                 if scope:
@@ -377,7 +372,7 @@ class SublimeHaskellGoToHackageModule(hsdev.HsDevTextCommand):
                     if not decls:
                         show_status_message('Module for symbol {0} not found'.format(qsymbol.full_name()))
                         return
-                    ms = [decl.defined_module() for decl in decls]
+                    ms = [decl.module for decl in decls]
 
             if len(ms) == 0:
                 show_status_message('Module {0} not found'.format(module_name))
@@ -534,7 +529,7 @@ class SublimeHaskellSymbolInfoCommand(hsdev.HsDevTextCommand):
             return
 
         if not no_browse:
-            self.view.window().show_quick_panel([[c.qualified_name(), c.defined_module().location.to_string()] for c in self.candidates], self.on_done)
+            self.view.window().show_quick_panel([[c.qualified_name(), c.module.location.to_string()] for c in self.candidates], self.on_done)
 
     def on_done(self, idx):
         if idx == -1:
@@ -624,6 +619,7 @@ class SublimeHaskellInsertImportForSymbol(hsdev.HsDevTextCommand):
         call_and_wait_tool(['hsinspect'], 'hsinspect', contents_part, self.on_inspected, check_enabled = False)
 
     def on_inspected(self, result):
+        # TODO: No more imports
         cur_module = hsdev.parse_module(json.loads(result)['module']) if self.view.is_dirty() else head_of(hsdev.client.module(file = self.current_file_name))
         imports = sorted(cur_module.imports, key = lambda i: i.position.line)
         after = [i for i in imports if i.module > self.module_name]
@@ -725,7 +721,7 @@ class SublimeHaskellBrowseModule(hsdev.HsDevWindowCommand):
                 if self.current_file_name:
                     ms = hsdev.client.scope_modules(self.current_file_name, input = module_name, search_type = 'exact')
                 else:
-                    ms = hsdev.client.list_modules(module = module_name, db = symbols.PackageDb.from_string(db) if db else None)
+                    ms = hsdev.client.module(module = module_name, db = symbols.PackageDb.from_string(db, header = True) if db else None)
 
             if len(ms) == 0:
                 show_status_message('Module {0} not found'.format(module_name))
@@ -748,7 +744,7 @@ class SublimeHaskellBrowseModule(hsdev.HsDevWindowCommand):
             if self.current_file_name:
                 ms = hsdev.client.scope_modules(self.current_file_name)
             else:
-                ms = hsdev.client.list_modules(db = symbols.PackageDb.from_string(db) if db else None)
+                ms = hsdev.client.module(db = symbols.PackageDb.from_string(db, header = True) if db else None)
             self.candidates.extend([(m, [m.name, m.location.to_string()]) for m in ms])
 
         if m:
@@ -810,19 +806,9 @@ class SublimeHaskellGoToDeclaration(hsdev.HsDevTextCommand):
                 self.view.window().open_file(candidates[0].get_source_location(), sublime.ENCODED_POSITION)
                 return
 
-            if candidates:
-                cands = candidates[:]
-                candidates = []
-                for c in cands:
-                    for i in c.imported:
-                        candidates = [s for s in hsdev.client.symbol(input = c.name, search_type = 'exact', source = True) if s.module.name == i.module]
-                        if candidates and candidates[0].has_source_location():
-                            self.view.window().open_file(candidates[0].get_source_location(), sublime.ENCODED_POSITION)
-                            return
-
             candidates = hsdev.client.symbol(input = qsymbol.name, search_type = 'exact', source = True)
         else:
-            module_candidates = [m for m in hsdev.client.list_modules(source = True, module = full_name) if m.name == full_name]
+            module_candidates = [m for m in hsdev.client.module(source = True, module = full_name, header = True) if m.name == full_name]
 
         if not candidates and not module_candidates:
             show_status_message('Declaration {0} not found'.format(qsymbol.name), False)

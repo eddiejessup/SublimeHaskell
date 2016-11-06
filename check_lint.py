@@ -272,50 +272,6 @@ def wait_ghcmod_and_parse(view, filename, msg, cmds_with_args, alter_messages_cb
     show_output_result_text(view, msg, output_text, exit_code, file_dir)
 
 
-def ghcmod_browse_module(module_name, cabal = None):
-    """
-    Returns symbols.Module with all declarations
-    """
-    contents = call_ghcmod_and_wait(['browse', '-d', module_name], cabal = cabal).splitlines()
-
-    if not contents:
-        return None
-
-    m = symbols.Module(module_name, cabal = cabal)
-
-    functionRegex = r'(?P<name>\w+)\s+::\s+(?P<type>.*)'
-    typeRegex = r'(?P<what>(class|type|data|newtype))\s+(?P<name>\w+)(\s+(?P<args>\w+(\s+\w+)*))?'
-
-    def toDecl(line):
-        matched = re.search(functionRegex, line)
-        if matched:
-            return symbols.Function(matched.group('name'), matched.group('type'))
-        else:
-            matched = re.search(typeRegex, line)
-            if matched:
-                decl_type = matched.group('what')
-                decl_name = matched.group('name')
-                decl_args = matched.group('args')
-                decl_args = decl_args.split() if decl_args else []
-
-                if decl_type == 'class':
-                    return symbols.Class(decl_name, None, decl_args)
-                elif decl_type == 'data':
-                    return symbols.Data(decl_name, None, decl_args)
-                elif decl_type == 'type':
-                    return symbols.Type(decl_name, None, decl_args)
-                elif decl_type == 'newtype':
-                    return symbols.Newtype(decl_name, None, decl_args)
-            else:
-                return symbols.Declaration(line)
-
-    decls = map(toDecl, contents)
-    for decl in decls:
-        m.add_declaration(decl)
-
-    return m
-
-
 def ghcmod_info(filename, module_name, symbol_name, cabal = None):
     """
     Uses ghc-mod info filename module_name symbol_name to get symbol info

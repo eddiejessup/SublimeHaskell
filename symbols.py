@@ -301,75 +301,43 @@ def location_cabal(loc):
     return None
 
 
-class Symbol(object):
+class ModuleId(object):
     """
-    Haskell symbol: module, function, data, class etc.
+    Name and location
     """
-    def __init__(self, symbol_type, name):
-        self.what = symbol_type
+    def __init__(self, name, location):
         self.name = name
-
-        self.tags = {}
-
-
-class Import(object):
-    """
-    Haskell import of module
-    """
-    def __init__(self, module_name, is_qualified = False, import_as = None, position = None, location = None):
-        self.module = module_name
-        self.is_qualified = is_qualified
-        self.import_as = import_as
-        self.position = position
         self.location = location
 
-    def dump(self):
-        return self.__dict__
+
+class SymbolId(object):
+    """
+    Name and module id
+    """
+    def __init__(self, name, moduleId):
+        self.name = name
+        self.module = moduleId
 
 
 def module_location(filename):
     return Location(filename)
 
 
-class Module(Symbol):
+class Module(ModuleId):
     """
     Haskell module symbol
     """
-    def __init__(self, module_name, exports = None, imports = [], declarations = {}, location = None, last_inspection_time = 0):
-        super(Module, self).__init__('module', module_name)
-        self.location = location
+    def __init__(self, module_name, location, exports = None, scope = {}, docs = None, last_inspection_time = 0):
+        super(Module, self).__init__(module_name, location)
         # List of strings
         if exports is not None:
             self.exports = exports[:]
-        # Dictionary from module name to Import object
-        self.imports = imports[:]
-        for i in self.imports:
-            i.location = self.location
         # Dictionary from name to Symbol
-        self.declarations = declarations.copy()
-        for d in self.declarations.values():
-            d.location = self.location
-
-        for decl in self.declarations.values():
-            decl.module = self
+        self.scope = scope.copy()
+        self.docs = docs
 
         # Time as from time.time()
         self.last_inspection_time = last_inspection_time
-
-    def add_declaration(self, new_declaration):
-        if not new_declaration.module:
-            new_declaration.module = self
-        new_declaration.location = self.location
-        if new_declaration.module != self:
-            raise RuntimeError("Adding declaration to other module")
-        self.declarations[new_declaration.name] = new_declaration
-
-    def unalias(self, module_alias):
-        """
-        Unalias module import if any
-        Returns list of unaliased modules
-        """
-        return [i.module for i in self.imports if i.import_as == module_alias]
 
     def get_location_id(self):
         if type(self.location) == InstalledLocation:
@@ -409,74 +377,52 @@ def unicode_operators(fn):
     return wrapped
 
 
-class Declaration(Symbol):
-    def __init__(self, name, decl_type = 'declaration', docs = None, imported = [], defined = None, position = None, module = None):
-        super(Declaration, self).__init__(decl_type, name)
+class Symbol(SymbolId):
+    def __init__(self, name, moduleId, symbol_type = 'declaration', docs = None, position = None, module = None, qnames = None):
+        super(Symbol, self).__init__(name, moduleId)
         self.docs = docs
-        self.imported = imported[:]
-        self.defined = defined
         self.position = position
-        self.module = module
+        self.module = moduleId
+        self.qnames = qnames
 
     def defined_module(self):
-        return self.defined or self.module
+        return self.module
 
     def by_source(self):
-        return type(self.defined_module().location) == Location
+        return type(self.module.location) == Location
 
     def by_cabal(self):
-        return type(self.defined_module().location) == InstalledLocation
+        return type(self.module.location) == InstalledLocation
 
     def by_hayoo(self):
-        return type(self.defined_module().location) == OtherLocation
+        return type(self.module.location) == OtherLocation
 
     def has_source_location(self):
         return self.by_source() and self.position is not None
 
     def get_source_location(self):
         if self.has_source_location():
-            return source_location(self.defined_module().location, self.position)
+            return source_location(self.module.location, self.position)
         return None
 
-    def make_qualified(self):
-        self.name = self.qualified_name()
-
     def module_name(self):
-        if self.imported:
-            return self.imported[0].module
         return self.module.name
-
-    def imported_names(self):
-        if self.imported:
-            return sorted(list(set([i.module for i in self.imported])))
-        # if self.module:
-        #     return [self.module.name]
-        return []
-
-    def imported_from_name(self):
-        inames = self.imported_names()
-        if inames:
-            return self.imported_names()[0]
-        return ''
 
     def suggest(self):
         """ Returns suggestion for this declaration """
-        return ('{0}\t{1}'.format(self.name, self.imported_from_name()), self.name)
+        return ('{0}\t{1}'.format(self.name, self.module.name), self.name)
 
     def brief(self, short = False):
         """ Brief information, just a name by default """
         return self.name
 
     def qualified_name(self):
-        return '.'.join([self.module_name(), self.name])
+        return '.'.join([self.module.name, self.name])
 
     @unicode_operators
     def detailed(self):
         """ Detailed info for use in Symbol Info command """
         parts = [self.brief()]
-
-        if self.imported_names():
-            parts.extend(['', 'Imported from {0}'.format(', '.join(self.imported_names()))])
 
         if self.docs:
             parts.extend(['', self.docs])
@@ -484,16 +430,16 @@ class Declaration(Symbol):
         parts.append('')
 
         if self.by_source():
-            if self.defined_module().location.project:
-                parts.append('Project: {0}'.format(self.defined_module().location.project))
+            if self.module.location.project:
+                parts.append('Project: {0}'.format(self.module.location.project))
         elif self.by_cabal():
-            parts.append('Installed in: {0}'.format(self.defined_module().location.db.to_string()))
-            parts.append('Package: {0}'.format(self.defined_module().location.package.package_id()))
+            parts.append('Installed in: {0}'.format(self.module.location.db.to_string()))
+            parts.append('Package: {0}'.format(self.module.location.package.package_id()))
 
         if self.has_source_location():
             parts.append('Defined at: {0}'.format(self.get_source_location()))
         else:
-            parts.append('Defined in: {0}'.format(self.defined_module().name))
+            parts.append('Defined in: {0}'.format(self.module.name))
 
         return '\n'.join(parts)
 
@@ -515,18 +461,14 @@ class Declaration(Symbol):
             parts.append(u'<br>{0}<span class="comment">-- {1}</span>'.format(
                 4 * '&nbsp;',
                 c))
-        if self.imported_names():
-            parts.append(u'<br>{0}<span class="comment">-- Imported from {1}</span>'.format(
-                4 * '&nbsp;',
-                html.escape(u', '.join(self.imported_names()), quote = False)))
-        if self.defined_module():
-            module_ref = html.escape(self.defined_module().name, quote = False)
-            if self.defined_module().by_source():
-                module_ref = u'<a href="{0}">{1}</a>'.format(self.defined_module().location.to_string(), module_ref)
-            elif self.defined_module().by_cabal():
+        if self.module:
+            module_ref = html.escape(self.module.name, quote = False)
+            if self.module.by_source():
+                module_ref = u'<a href="{0}">{1}</a>'.format(self.module.location.to_string(), module_ref)
+            elif self.module.by_cabal():
                 hackage_url = 'http://hackage.haskell.org/package/{0}/docs/{1}.html'.format(
-                    self.defined_module().location.package.package_id(),
-                    self.defined_module().name.replace('.', '-'))
+                    self.module.location.package.package_id(),
+                    self.module.name.replace('.', '-'))
                 module_ref = u'<a href="{0}">{1}</a>'.format(html.escape(hackage_url), module_ref)
             parts.append(u'<br>{0}<span class="comment">-- Defined in {1}</span>'.format(
                 4 * '&nbsp;',
@@ -565,16 +507,13 @@ def format_type(expr):
         return html.escape(expr, quote = False)
 
 
-class Function(Declaration):
-    """
-    Haskell function declaration
-    """
-    def __init__(self, name, function_type, docs = None, imported = [], defined = None, position = None, module = None):
-        super(Function, self).__init__(name, 'function', docs, imported, defined, position, module)
+class FunctionBase(Symbol):
+    def __init__(self, name, moduleId, symbol_type, function_type, docs = None, position = None, qnames = None):
+        super(FunctionBase, self).__init__(name, moduleId, symbol_type, docs, position, qnames)
         self.type = function_type
 
     def suggest(self):
-        return (use_unicode_operators(u'{0} :: {1}\t{2}'.format(wrap_operator(self.name), self.type, self.imported_from_name())), self.name)
+        return (use_unicode_operators(u'{0} :: {1}\t{2}'.format(wrap_operator(self.name), self.type, self.module.name)), self.name)
 
     @unicode_operators
     def brief(self, short = False):
@@ -590,18 +529,42 @@ class Function(Declaration):
         return u'{0} <span class="operator">::</span> {1}'.format(info, format_type(self.type if self.type else u'?'))
 
 
-class TypeBase(Declaration):
+class Function(FunctionBase):
+    def __init__(self, name, moduleId, function_type, docs = None, position = None, qnames = None):
+        super(Function, self).__init__(name, moduleId, 'function', function_type, docs, position, qnames)
+
+
+class Method(FunctionBase):
+    def __init__(self, name, moduleId, function_type, parent, docs = None, position = None, qnames = None):
+        super(Method, self).__init__(name, moduleId, 'function', function_type, docs, position, qnames)
+        self.parent = parent
+
+
+class Selector(FunctionBase):
+    def __init__(self, name, moduleId, function_type, parent, constructors = [], docs = None, position = None, qnames = None):
+        super(Selector, self).__init__(name, moduleId, 'function', function_type, docs, position, qnames)
+        self.parent = parent
+        self.constructors = constructors
+
+
+class Constructor(FunctionBase):
+    def __init__(self, name, moduleId, args, parent, docs = None, position = None, qnames = None):
+        super(Constructor, self).__init__(name, moduleId, 'function', ' -> '.join(args + [parent]), docs, position, qnames)
+        self.args = args
+        self.parent = parent
+
+
+class TypeBase(Symbol):
     """
     Haskell type, data or class
     """
-    def __init__(self, name, decl_type, context, args, definition = None, docs = None, imported = [], defined = None, position = None, module = None):
-        super(TypeBase, self).__init__(name, decl_type, docs, imported, defined, position, module)
+    def __init__(self, name, moduleId, symbol_type, context, args, docs = None, position = None, qnames = None):
+        super(TypeBase, self).__init__(name, moduleId, symbol_type, docs, position, qnames)
         self.context = context
         self.args = args
-        self.definition = definition
 
     def suggest(self):
-        return (use_unicode_operators(u'{0} {1}\t{2}'.format(self.name, ' '.join(self.args), self.imported_from_name())), self.name)
+        return (use_unicode_operators(u'{0} {1}\t{2}'.format(self.name, ' '.join(self.args), self.module)), self.name)
 
     @unicode_operators
     def brief(self, short = False):
@@ -610,9 +573,6 @@ class TypeBase(Declaration):
             if self.args:
                 brief_parts.extend(self.args)
             return u' '.join(brief_parts)
-
-        if self.definition:
-            return self.definition
 
         brief_parts = [self.what]
         if self.context:
@@ -652,32 +612,38 @@ class Type(TypeBase):
     """
     Haskell type synonym
     """
-    def __init__(self, name, context, args, definition = None, docs = None, imported = [], defined = None, position = None, module = None):
-        super(Type, self).__init__(name, 'type', context, args, definition, docs, imported, defined, position, module)
+    def __init__(self, name, moduleId, context, args, docs = None, position = None, qnames = None):
+        super(Type, self).__init__(name, moduleId, 'type', context, args, docs, position, qnames)
 
 
 class Newtype(TypeBase):
-    """
-    Haskell newtype synonym
-    """
-    def __init__(self, name, context, args, definition = None, docs = None, imported = [], defined = None, position = None, module = None):
-        super(Newtype, self).__init__(name, 'newtype', context, args, definition, docs, imported, defined, position, module)
+    def __init__(self, name, moduleId, context, args, docs = None, position = None, qnames = None):
+        super(Newtype, self).__init__(name, moduleId, 'newtype', context, args, docs, position, qnames)
 
 
 class Data(TypeBase):
-    """
-    Haskell data declaration
-    """
-    def __init__(self, name, context, args, definition = None, docs = None, imported = [], defined = None, position = None, module = None):
-        super(Data, self).__init__(name, 'data', context, args, definition, docs, imported, defined, position, module)
+    def __init__(self, name, moduleId, context, args, docs = None, position = None, qnames = None):
+        super(Data, self).__init__(name, moduleId, 'data', context, args, docs, position, qnames)
 
 
 class Class(TypeBase):
-    """
-    Haskell class declaration
-    """
-    def __init__(self, name, context, args, definition = None, docs = None, imported = [], defined = None, position = None, module = None):
-        super(Class, self).__init__(name, 'class', context, args, definition, docs, imported, defined, position, module)
+    def __init__(self, name, moduleId, context, args, docs = None, position = None, qnames = None):
+        super(Class, self).__init__(name, moduleId, 'class', context, args, docs, position, qnames)
+
+
+class TypeFamily(TypeBase):
+    def __init__(self, name, moduleId, context, args, docs = None, position = None, qnames = None):
+        super(TypeFamily, self).__init__(name, moduleId, 'type family', context, args, docs, position, qnames)
+
+
+class DataFamily(TypeBase):
+    def __init__(self, name, moduleId, context, args, docs = None, position = None, qnames = None):
+        super(DataFamily, self).__init__(name, moduleId, 'data family', context, args, docs, position, qnames)
+
+
+class PatternSynonym(TypeBase):
+    def __init__(self, name, moduleId, context, args, docs = None, position = None, qnames = None):
+        super(PatternSynonym, self).__init__(name, moduleId, 'pattern', context, args, docs, position, qnames)
 
 
 def update_with(l, r, default_value, f):

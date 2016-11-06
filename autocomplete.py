@@ -156,8 +156,8 @@ class AutoCompletion(object):
 
                 # Get imports names
                 # Note, that if module imported with 'as', then it can be used only with its synonym instead of full name
-                import_names.extend([('{0}\tmodule {1}'.format(i.import_as, i.module), i.import_as) for i in current_module.imports if i.import_as])
-                import_names.extend([('{0}\tmodule'.format(i.module), i.module) for i in current_module.imports if not i.import_as])
+                # import_names.extend([('{0}\tmodule {1}'.format(i.import_as, i.module), i.import_as) for i in current_module.imports if i.import_as])
+                # import_names.extend([('{0}\tmodule'.format(i.module), i.module) for i in current_module.imports if not i.import_as])
 
                 comps.extend(import_names)
                 sort_completions(comps)
@@ -218,14 +218,13 @@ class AutoCompletion(object):
                     if current_project:
                         # Search for declarations of qsymbol.module within current project
                         q_module = head_of(hsdev.client.scope_modules(file = current_file_name, input = qsymbol.module, search_type = 'exact'))
-                        if q_module.by_source():
-                            proj_module = hsdev.client.resolve(file = q_module.location.filename, exports = True)
-                            if proj_module:
-                                suggestions = proj_module.declarations.values()
-                        elif q_module.by_cabal():
-                            cabal_module = head_of(hsdev.client.module(q_module.name, search_type = 'exact', package = q_module.location.package.name))
-                            if cabal_module:
-                                suggestions = cabal_module.declarations.values()
+                        m = head_of(hsdev.client.module(
+                            q_module.name,
+                            search_type = 'exact',
+                            file = q_module.location.filename if q_module.by_source() else None,
+                            package = q_module.location.package.name if q_module.by_cabal() else None))
+                        if m:
+                            suggestions = m.exports
                 else:
                     suggestions = hsdev.client.complete(qualified_prefix, current_file_name, wide = wide)
             return self.keyword_completions + make_completions(suggestions)
@@ -254,7 +253,7 @@ class AutoCompletion(object):
             package = ms[0].location.package.name if ms and ms[0].by_cabal() else None))
         if not m:
             return []
-        return make_completions(m.declarations.values())
+        return make_completions(m.exports)
 
     def completions_for(self, module_name, filename = None):
         """
@@ -344,14 +343,14 @@ class AutoCompletion(object):
         elif current_dir:
             proj = hsdev.client.project(path = current_dir)
             if proj and 'path' in proj:
-                return set([m.name for m in hsdev.client.list_modules(deps = proj['path'])])
+                return set([m.name for m in hsdev.client.module(deps = proj['path'], header = True)])
             sbox = hsdev.client.sandbox(path = current_dir)
             if sbox and type(sbox) == dict and 'sandbox' in sbox:
                 sbox = sbox.get('sandbox')
             if sbox:
-                return set([m.name for m in hsdev.client.list_modules(sandbox = sbox)])
+                return set([m.name for m in hsdev.client.module(sandbox = sbox, header = True)])
         else:
-            return set([m.name for m in hsdev.client.list_modules(cabal = True)])
+            return set([m.name for m in hsdev.client.module(cabal = True, header = True)])
 
 autocompletion = AutoCompletion()
 
