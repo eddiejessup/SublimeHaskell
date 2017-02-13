@@ -309,6 +309,20 @@ class ModuleId(object):
         self.name = name
         self.location = location
 
+    def get_location_id(self):
+        if type(self.location) == InstalledLocation:
+            return '{0}:{1}'.format(self.location.get_id(), self.name)
+        return self.location.get_id()
+
+    def by_source(self):
+        return type(self.location) == Location
+
+    def by_cabal(self):
+        return type(self.location) == InstalledLocation
+
+    def by_hayoo(self):
+        return type(self.location) == OtherLocation
+
 
 class SymbolId(object):
     """
@@ -339,20 +353,6 @@ class Module(ModuleId):
         # Time as from time.time()
         self.last_inspection_time = last_inspection_time
 
-    def get_location_id(self):
-        if type(self.location) == InstalledLocation:
-            return '{0}:{1}'.format(self.location.get_id(), self.name)
-        return self.location.get_id()
-
-    def by_source(self):
-        return type(self.location) == Location
-
-    def by_cabal(self):
-        return type(self.location) == InstalledLocation
-
-    def by_hayoo(self):
-        return type(self.location) == OtherLocation
-
 
 def escape_text(txt):
     """
@@ -380,6 +380,7 @@ def unicode_operators(fn):
 class Symbol(SymbolId):
     def __init__(self, name, moduleId, symbol_type = 'declaration', docs = None, position = None, module = None, qnames = None):
         super(Symbol, self).__init__(name, moduleId)
+        self.what = symbol_type
         self.docs = docs
         self.position = position
         self.module = moduleId
