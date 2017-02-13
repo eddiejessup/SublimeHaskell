@@ -555,7 +555,7 @@
 				</dict>
 				<dict>
 					<key>match</key>
-					<string>\b(Applicative|Bounded|Enum|Eq|Ord|Foldable|Fractional|Functor|Monoid|Num|Read|Real|RealFrac|Show)\b</string>
+					<string>\b(Applicative|Bounded|Enum|Eq|Ord|Foldable|Fractional|Functor|Monoid|Num|Floating|Read|Real|RealFrac|Show)\b</string>
 					<key>name</key>
 					<string>storage.type.haskell support.class.haskell</string>
 				</dict>
