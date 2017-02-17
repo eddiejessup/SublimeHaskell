@@ -101,7 +101,7 @@ class SublimeHaskellContext(sublime_plugin.EventListener):
             word_region = view.word(region)
             preline = get_line_contents_before_region(view, word_region)
             preline += chars[key]
-            return can_complete_qualified_symbol(get_qualified_symbol(preline))
+            return autocomplete.can_complete_qualified_symbol(get_qualified_symbol(preline))
         else:
             return False
 
@@ -616,7 +616,7 @@ class SublimeHaskellInsertImportForSymbol(hsdev.HsDevTextCommand):
         self.module_name = module_name
         contents = self.view.substr(sublime.Region(0, self.view.size()))
         contents_part = contents[0: list(re.finditer('^import.*$', contents, re.MULTILINE))[-1].end()]
-        call_and_wait_tool(['hsinspect'], 'hsinspect', contents_part, self.on_inspected, check_enabled = False)
+        ProcHelper.invoke_tool(['hsinspect'], 'hsinspect', contents_part, self.on_inspected, check_enabled = False)
 
     def on_inspected(self, result):
         # TODO: No more imports
@@ -674,8 +674,8 @@ class SublimeHaskellClearImports(hsdev.HsDevTextCommand):
 
         imports = sorted(cur_module.imports, key = lambda i: i.position.line)
 
-        cmd = ['hsclearimports', self.current_file_name, '--max-import-list', '16']
-        (exit_code, cleared, err) = call_and_wait(cmd)
+        cmd = ['hsclearimports', self.current_file_name, '--max-import-list', '32']
+        exit_code, cleared, err = ProcHelper.run_process(cmd)
         if exit_code != 0:
             log('hsclearimports error: {0}'.format(err), log_error)
             return
