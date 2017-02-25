@@ -48,7 +48,7 @@ data GData a b where
 	GLeft :: a -> GData a b
 	-- comment
 	GRight ∷ b → GData a b
-	deriving (Show)
+		deriving (Show) -- this indent must work too
 
 type Foo a b = Dat a b
 

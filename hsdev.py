@@ -808,6 +808,11 @@ class HsDev(object):
     def ping(self):
         return cmd('ping', {}, lambda r: r and ('message' in r) and (r['message'] == 'pong'))
 
+    @command
+    def set_log_config(self, rules = []):
+        return cmd('set-log', {
+            'rules': rules})
+
     @async_command
     def scan(self, cabal = False, sandboxes = [], projects = [], files = [], paths = [], ghc = [], contents = {}, docs = False, infer = False):
         return cmd('scan', {
@@ -856,7 +861,11 @@ class HsDev(object):
         return cmd('projects', {})
 
     @list_command
-    def symbol(self, input = "", search_type = 'prefix', project = None, file = None, module = None, deps = None, sandbox = None, cabal = False, db = None, package = None, source = False, standalone = False, locals = False):
+    def list_sandboxes(self):
+        return cmd('sandboxes', {})
+
+    @list_command
+    def symbol(self, input = "", search_type = 'prefix', project = None, file = None, module = None, sandbox = None, cabal = False, db = None, package = None, source = False, standalone = False, header = False, locals = False):
         # search_type is one of: exact, prefix, infix, suffix, regex
         q = {'input': input, 'type': search_type}
 
@@ -867,12 +876,10 @@ class HsDev(object):
             fs.append({'file': file})
         if module:
             fs.append({'module': module})
-        if deps:
-            fs.append({'deps': deps})
         if sandbox:
-            fs.append({'cabal': {'sandbox': sandbox}})
+            fs.append({'sandbox': sandbox})
         if cabal:
-            fs.append({'cabal': 'cabal'})
+            fs.append('cabal')
         if db:
             fs.append({'db': encode_package_db(db)})
         if package:
@@ -882,11 +889,11 @@ class HsDev(object):
         if standalone:
             fs.append('standalone')
 
-        return cmd('symbol', {'query': q, 'filters': fs, 'locals': locals}, parse_symbols)
+        return cmd('symbol', {'query': q, 'filters': fs, 'header': header, 'locals': locals}, parse_symbol_ids if header else parse_symbols)
 
     @command
-    def module(self, input = "", search_type = 'prefix', project = None, file = None, module = None, deps = None, sandbox = None, cabal = False, db = None, package = None, source = False, standalone = False, header = False):
-        q = {'input': input, 'type': search_type, 'header': header}
+    def module(self, input = "", search_type = 'prefix', project = None, file = None, module = None, deps = None, sandbox = None, cabal = False, db = None, package = None, source = False, standalone = False, header = False, inspection = False):
+        q = {'input': input, 'type': search_type}
 
         fs = []
         if project:
@@ -895,12 +902,10 @@ class HsDev(object):
             fs.append({'file': file})
         if module:
             fs.append({'module': module})
-        if deps:
-            fs.append({'deps': deps})
         if sandbox:
-            fs.append({'cabal': {'sandbox': sandbox}})
+            fs.append({'sandbox': sandbox})
         if cabal:
-            fs.append({'cabal': 'cabal'})
+            fs.append('cabal')
         if db:
             fs.append({'db': encode_package_db(db)})
         if package:
@@ -910,11 +915,7 @@ class HsDev(object):
         if standalone:
             fs.append('standalone')
 
-        return cmd('module', {'query': q, 'filters': fs}, parse_modules)
-
-    @command
-    def resolve(self, file, exports = False):
-        return cmd('resolve', {'file': file, 'exports': exports}, parse_module)
+        return cmd('module', {'query': q, 'filters': fs, 'header': header, 'inspection': inspection}, parse_module_ids if header else parse_modules)
 
     @command
     def project(self, project = None, path = None):
@@ -937,8 +938,8 @@ class HsDev(object):
         return cmd('scope modules', {'query': {'input': input, 'type': search_type}, 'file': file}, parse_modules_brief)
 
     @list_command
-    def scope(self, file, input = '', search_type = 'prefix', global_scope = False):
-        return cmd('scope', {'query': {'input': input, 'type': search_type}, 'global': global_scope, 'file': file}, parse_symbols)
+    def scope(self, file, input = '', search_type = 'prefix'):
+        return cmd('scope', {'query': {'input': input, 'type': search_type}, 'file': file}, parse_symbols)
 
     @list_command
     def complete(self, input, file, wide = False):
@@ -953,10 +954,9 @@ class HsDev(object):
         cmd('cabal list', {'packages': packages}, lambda r: [parse_cabal_package(s) for s in r] if r else None)
 
     @list_command
-    def lint(self, files = [], contents = {}, hlint = []):
+    def lint(self, files = [], contents = {}):
         return cmd('lint', {
-            'files': [{'file': f, 'contents': None} for f in files] + [{'file': f, 'contents': cts} for f, cts in contents.items()],
-            'hlint-opts': hlint})
+            'files': [{'file': f, 'contents': None} for f in files] + [{'file': f, 'contents': cts} for f, cts in contents.items()]})
 
     @list_command
     def check(self, files = [], contents = {}, ghc = []):
@@ -965,11 +965,10 @@ class HsDev(object):
             'ghc-opts': ghc})
 
     @list_command
-    def check_lint(self, files = [], contents = {}, ghc = [], hlint = []):
+    def check_lint(self, files = [], contents = {}, ghc = []):
         return cmd('check-lint', {
             'files': [{'file': f, 'contents': None} for f in files] + [{'file': f, 'contents': cts} for f, cts in contents.items()],
-            'ghc-opts': ghc,
-            'hlint-opts': hlint})
+            'ghc-opts': ghc})
 
     @list_command
     def types(self, files = [], contents = {}, ghc = []):
