@@ -42,6 +42,7 @@ class HsDevBackend(Backend.HaskellBackend):
     HSDEV_MIN_VER = [0, 3, 1, 0]  # minimum hsdev version
     HSDEV_MAX_VER = [0, 3, 2, 0]  # maximum hsdev version
     HSDEV_CALL_TIMEOUT = 300.0 # second timeout for synchronous requests (5 minutes should be enough, no?)
+    HSDEV_CALL_TIMEOUT_ASYNC = 100.0 # second timeout for asynchronous requests.
 
     def __init__(self, backend_mgr, local=True, port=HSDEV_DEFAULT_PORT, host=HSDEV_DEFAULT_HOST, **kwargs):
         super().__init__(backend_mgr)
@@ -334,8 +335,8 @@ class HsDevBackend(Backend.HaskellBackend):
                                   on_result_part=on_result_part, split_result=split_result)
 
 
-    def async_command(self, name, opts, callbacks, on_result_part=None, split_result=None):
-        return self.hsdev_command(name, opts, callbacks, async_cmd=True, timeout=None, is_list=False,
+    def async_command(self, name, opts, callbacks, timeout=HSDEV_DEFAULT_PORT, on_result_part=None, split_result=None):
+        return self.hsdev_command(name, opts, callbacks, async_cmd=True, timeout=timeout, is_list=False,
                                   on_result_part=on_result_part, split_result=split_result)
 
 
@@ -343,8 +344,8 @@ class HsDevBackend(Backend.HaskellBackend):
         return self.hsdev_command(name, opts, callbacks, async_cmd=False, timeout=timeout, is_list=True,
                                   on_result_part=on_result_part, split_result=split_result)
 
-    def async_list_command(self, name, opts, callbacks, on_result_part=None, split_result=None):
-        return self.hsdev_command(name, opts, callbacks, async_cmd=True, timeout=None, is_list=True,
+    def async_list_command(self, name, opts, callbacks, timeout=HSDEV_DEFAULT_PORT, on_result_part=None, split_result=None):
+        return self.hsdev_command(name, opts, callbacks, async_cmd=True, timeout=timeout, is_list=True,
                                   on_result_part=on_result_part, split_result=split_result)
 
     # -~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-

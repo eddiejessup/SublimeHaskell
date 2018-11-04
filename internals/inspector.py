@@ -47,6 +47,8 @@ class Inspector(object):
     '''The source inspector.
     '''
 
+    TIMEOUT = 100.0
+
     def __init__(self, backend):
         super().__init__()
         # The backend, whose support functions we invoke:
@@ -180,7 +182,7 @@ class Inspector(object):
                               sandboxes=[] if cabal == 'cabal' else [cabal],
                               on_notify=ScanStatus(smgr),
                               wait_complete=True,
-                              timeout=None,
+                              timeout=self.TIMEOUT,
                               docs=Settings.PLUGIN.enable_hdocs)
             smgr.result_ok()
 
@@ -200,7 +202,7 @@ class Inspector(object):
                                   contents=contents,
                                   on_notify=ScanStatus(smgr),
                                   wait_complete=True,
-                                  timeout=None,
+                                  timeout=self.TIMEOUT,
                                   ghc=Settings.PLUGIN.ghc_opts,
                                   docs=Settings.PLUGIN.enable_hdocs)
                 smgr.result_ok()
@@ -211,7 +213,7 @@ class Inspector(object):
             self.backend.scan(paths=[path],
                               on_notify=ScanStatus(smgr),
                               wait_complete=True,
-                              timeout=None,
+                              timeout=self.TIMEOUT,
                               ghc=Settings.PLUGIN.ghc_opts,
                               docs=Settings.PLUGIN.enable_hdocs)
             smgr.result_ok()
@@ -224,7 +226,7 @@ class Inspector(object):
             self.backend.scan(projects=[cabal_dir],
                               on_notify=ScanStatus(smgr),
                               wait_complete=True,
-                              timeout=None,
+                              timeout=self.TIMEOUT,
                               docs=Settings.PLUGIN.enable_hdocs)
             smgr.result_ok()
 
@@ -234,7 +236,7 @@ class Inspector(object):
             self.backend.scan(files=filenames,
                               on_notify=ScanStatus(smgr),
                               wait_complete=True,
-                              timeout=None,
+                              timeout=self.TIMEOUT,
                               ghc=Settings.PLUGIN.ghc_opts,
                               docs=Settings.PLUGIN.enable_hdocs)
             smgr.result_ok()
@@ -244,7 +246,7 @@ class Inspector(object):
             self.backend.docs(files=filenames, projects=projects,
                               on_notify=DocScanStatus(smgr),
                               wait_complete=True,
-                              timeout=None)
+                              timeout=self.TIMEOUT)
             smgr.result_ok()
 
     def is_busy(self):
